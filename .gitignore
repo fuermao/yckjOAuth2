@@ -1,0 +1,8 @@
+# idea设置文件
+.idea/
+
+# composer组件目录
+./vendor/
+
+# composer 锁文件
+composer.lock

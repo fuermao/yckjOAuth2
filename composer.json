@@ -1,0 +1,25 @@
+{
+    "name": "yckj/yckj_oauth2",
+    "description": "对接oauth2.0服务",
+    "type": "library",
+    "require": {
+        "guzzlehttp/guzzle": "^6.0",
+        "php-http/guzzle6-adapter": "^2.0",
+        "ext-json": "*",
+        "topthink/think-cache": "^2.0",
+        "league/oauth2-client": "^2.4"
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "ermao",
+            "email": "120191115@qq.com"
+        }
+    ],
+    "minimum-stability": "beta",
+    "autoload": {
+        "psr-4": {
+            "OAuth2\\": "src/"
+        }
+    }
+}

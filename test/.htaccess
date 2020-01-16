@@ -1,0 +1,4 @@
+<Files index.php>
+    order allow,deny
+    deny from all
+</Files>
