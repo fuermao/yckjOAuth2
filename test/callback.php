@@ -88,4 +88,6 @@ try {
     Logger::getInstance("test_callback")->write(["Error"=>$e->getMessage()]);
 } catch (OAuthClientException $e) {
     Logger::getInstance("test_callback")->write(["Error"=>$e->getMessage()]);
+} catch (throwable $e) {
+    Logger::getInstance("test_callback")->write(["Error"=>$e->getMessage()]);
 }

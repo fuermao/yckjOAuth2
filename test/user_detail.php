@@ -27,12 +27,9 @@ $oauthConfig = [
 ];
 $oauthClient = YiCKJOAuth2Client::getInstance($oauthConfig);
 
-// token
-$tokenStr = "bd9716c4-96ac-46bf-b67d-a91b29130aea";
-
 // 获取用户信息
 try {
-    $userInfo = $oauthClient->getResourceOwnerDetail($tokenStr);
+    $userInfo = $oauthClient->getResourceOwnerDetail($_GET["access_token"]);
     echo "<pre>";
     print_r($userInfo);
     echo "<pre/>";
