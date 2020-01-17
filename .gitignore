@@ -2,7 +2,7 @@
 .idea/
 
 # composer组件目录
-./vendor/
+vendor/*
 
 # composer 锁文件
 composer.lock
