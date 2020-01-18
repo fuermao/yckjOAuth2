@@ -4,6 +4,7 @@
 namespace OAuth2;
 
 
+use GuzzleHttp\Client;
 use League\OAuth2\Client\Provider\Exception\IdentityProviderException;
 use League\OAuth2\Client\Provider\GenericProvider;
 use League\OAuth2\Client\Provider\GenericResourceOwner;
@@ -11,6 +12,8 @@ use League\OAuth2\Client\Token\AccessToken;
 use OAuth2\exception\OAuthClientAuthCodeNotExistException;
 use OAuth2\exception\OAuthClientException;
 use OAuth2\exception\OAuthClientInitializationException;
+use OAuth2\library\constant\HttpHeader;
+use OAuth2\library\constant\MediaType;
 use OAuth2\library\logger\Logger;
 use OAuth2\library\YiChKeJiPostAuthOptionProvider;
 use Psr\SimpleCache\InvalidArgumentException;
@@ -57,6 +60,8 @@ class YiCKJOAuth2Client
         "urlResourceOwnerDetails"   => "",
         // 配置的权限 根据系统情况而定 ，如：user_info
         "scopes"                    => "",
+        // 登出SSO系统 完整地址，如：http://test.xxxx.com/logout
+        "logoutSSO"                 => "",
     ];
 
     /**
@@ -72,14 +77,16 @@ class YiCKJOAuth2Client
         "client_secret"             => "clientSecret",
         // 申明的权限内容
         "scope"                     => "scopes",
-        // 授权码获取地址
-        "authorize_uri"             => "urlAuthorize,true",
         // 授权码模式回调地址
         "authorize_redirect"        => "redirectUri",
+        // 授权码获取地址
+        "authorize_uri"             => "urlAuthorize,true",
         // token获取地址
         "access_token_uri"          => "urlAccessToken,true",
         // 获取用户信息
         "user_info_uri"             => "urlResourceOwnerDetails,true",
+        // 登出SSO系统
+        "logout_sso"                => "logoutSSO,true"
     ];
 
     /**
@@ -274,7 +281,7 @@ class YiCKJOAuth2Client
             // 授权码
             $accessToken = $this->provider->getAccessToken("authorization_code",$requestData);
             // 判断是否成功获取 access_token
-            if(!$accessToken || !($accessToken instanceof AccessToken)){
+            if(!($accessToken instanceof AccessToken)){
                 $logData["Error"] = "获取access_token失败！";
                 $logData["Error Data"] = (string)$accessToken;
                 Logger::getInstance(self::$logFileName)->write($logData);
@@ -294,7 +301,13 @@ class YiCKJOAuth2Client
             Logger::getInstance(static::$logFileName)->write($logData);
             return $accessToken;
         } catch (IdentityProviderException $e) {
-            $errMsg = sprintf("获取access_token失败！%s%s",$e->getMessage(),$e->getResponseBody());
+            $exceptionMsg = "";
+            if(is_array($e->getResponseBody())){
+                $exceptionMsg = implode(",",array_values($e->getResponseBody()));
+            }else{
+                $exceptionMsg = $e->getResponseBody();
+            }
+            $errMsg = sprintf("获取access_token失败！%s",$exceptionMsg);
             $logData["Error"] = $errMsg;
             Logger::getInstance(static::$logFileName)->write($logData);
             throw new OAuthClientException($errMsg,500);
@@ -391,6 +404,8 @@ class YiCKJOAuth2Client
             $this->deleteStoreRefreshToken($accessTokenStr);
             $this->deleteStoreAccessToken($accessTokenStr);
             $this->storeAccessToken($accessToken);
+            // 删除用户信息
+            $this->deleteStoreUserDetail($accessTokenStr);
 
             $logData["Request Refresh Access Token Result"] = (array)$accessToken->jsonSerialize();
             Logger::getInstance(self::$logFileName)->write($logData);
@@ -408,13 +423,60 @@ class YiCKJOAuth2Client
      * 登出SSO系统
      *
      * @param string $accessTokenStr
+     * @return bool
      * @throws OAuthClientException
      */
-    public function logout(string $accessTokenStr){
+    /**
+     * 登出SSO系统
+     *
+     * @param string $accessTokenStr access token令牌
+     * @param bool $isNotifySSOServer 是否通知SSO服务，true为通知，false为不通知；
+     * @return bool
+     * @throws OAuthClientException
+     */
+    public function logout(string $accessTokenStr,bool $isNotifySSOServer = false){
         try {
-            $this->cacheManager->delete($this->getStoreUserDetailKey($accessTokenStr));
-            $this->cacheManager->delete($this->getStoreRefreshTokenKey($accessTokenStr));
-            $this->cacheManager->delete($this->getStoreAccessTokenKey($accessTokenStr));
+            $result = [];
+            $logData = [];
+            // 删除系统中相关用户缓存信息
+            array_push(
+                $result,
+                $this->cacheManager->delete($this->getStoreUserDetailKey($accessTokenStr)),
+                $this->cacheManager->delete($this->getStoreRefreshTokenKey($accessTokenStr)),
+                $this->cacheManager->delete($this->getStoreAccessTokenKey($accessTokenStr))
+            );
+            // 发送远程请求通知
+            if($isNotifySSOServer){
+                $header[HttpHeader::AUTHORIZATION] = sprintf("Bear %s",$accessTokenStr);
+                $header[HttpHeader::CONTENT_TYPE] = MediaType::APPLICATION_FORM_URLENCODED_VALUE;
+                $header[HttpHeader::ACCEPT] = MediaType::APPLICATION_JSON_UTF8_VALUE;
+                $logoutUrl = $this->oauthConfig["logoutSSO"];
+                // 请求数据
+                $requestData = [];
+                $requestDataStr = "";
+                foreach ($requestData as $key=>$requestDatum) {
+                    $requestDataStr .= sprintf("%s=%s&",$key,$requestDatum);
+                }
+                $requestDataStr = rtrim($requestDataStr,"&");
+
+                $httpClient = new Client();
+                $options["headers"] = $header;
+                $options["body"] = $requestDataStr;
+                $options["version"] = '1.1';
+                $response = $httpClient->request("POST",$logoutUrl,$options);
+                $logData["SSO Logout Url"] = $logoutUrl;
+                $logData["SSO Logout Header"] = $header;
+                $logData["SSO Logout Data"] = $requestData;
+                $logData["SSO Logout State Response"] = $response->getBody()->getContents();
+                $logData["SSO Logout State Code"] = $response->getStatusCode();
+                if($response->getStatusCode() >= 200 && $response->getStatusCode() <= 299){
+                    array_push($result,true);
+                }else{
+                    array_push($result,false);
+                }
+            }
+            Logger::getInstance(self::$logFileName)->write($logData);
+            return in_array(true,$result);
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = sprintf("登出失败！删除用户信息错误！%s",$e->getMessage());
             Logger::getInstance(self::$logFileName)->write($logData);
@@ -447,7 +509,7 @@ class YiCKJOAuth2Client
         try {
             return $this->cacheManager
                 ->tag(self::cache_state_tag)
-                ->set($stateCodeKey, $stateCode, 36000);
+                ->remember($stateCodeKey, $stateCode, 36000);
         } catch (\throwable $e) {
             $logData["Error"] = "存储stateCode失败！".$e->getMessage();
             Logger::getInstance(self::$logFileName)->write($logData);
@@ -504,13 +566,13 @@ class YiCKJOAuth2Client
         // 存储refresh token，判断access token中是否存在refresh token
         // 如果存在则存储，不存在则不存储
         $refreshToken = $accessToken->getRefreshToken();
-        if(!empty($refreshToken) && !$refreshToken){
+        if(!empty($refreshToken) && is_string($refreshToken) && strlen($refreshToken)>0){
             $refreshTokenKey = $this->getStoreRefreshTokenKey($accessToken->getToken());
             // 默认过期时间为 0
             try {
                 return $this->cacheManager
                     ->tag(self::cache_refresh_token_tag)
-                    ->set($refreshTokenKey, $accessToken->getRefreshToken());
+                    ->remember($refreshTokenKey, $accessToken->getRefreshToken(),0);
             } catch (\throwable $e) {
                 $logData["Error"] = "存储RefreshToken失败！".$e->getMessage();
                 Logger::getInstance(self::$logFileName)->write($logData);
@@ -586,7 +648,7 @@ class YiCKJOAuth2Client
         try {
             return $this->cacheManager
                 ->tag(self::cache_access_token_tag)
-                ->set($accessTokenKey, json_encode((array)$accessToken->jsonSerialize()), new \DateTime(date("Y-m-d",$accessToken->getExpires())));
+                ->remember($accessTokenKey, json_encode((array)$accessToken->jsonSerialize()), (int)($accessToken->getExpires() - time()));
         } catch (\throwable $e) {
             $logData["Error"] = "存储accessToken失败！".$e->getMessage();
             Logger::getInstance(self::$logFileName)->write($logData);
@@ -689,7 +751,7 @@ class YiCKJOAuth2Client
             // 存储用户信息
             return $this->cacheManager
                 ->tag(self::cache_user_detail_tag)
-                ->set($userDetailKey,json_encode($userDetailArr),new \DateTime(date("Y-m-d",$accessToken->getExpires())));
+                ->remember($userDetailKey,json_encode($userDetailArr),(int)($accessToken->getExpires() - time()));
         } catch (\throwable $e) {
             $logData["Error"] = "缓存accessToken[".$accessToken."]所对应的用户信息失败！";
             Logger::getInstance(self::$logFileName)->write($logData);
