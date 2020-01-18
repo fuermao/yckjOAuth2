@@ -13,6 +13,16 @@
 composer require yckj/yckj_oauth2
 ```
 
+### 异常编码
+
+> 异常`code`基本与`HttpCode`（Http状态码）相匹配，可直接用作响应状态码。
+
+编码 | HttpCode 含义 | 本组件中含义
+:---: | :---: | :---:
+400 | Bad Request 客户端错误 | 泛指客户端错误或使用了过期AccessToken
+401 | Unauthorized 认证失败 | OAuth认证失败
+500 | Internal Server Error 服务端异常 | 基本与缓存读取写入失败相关
+
 ## 授权码模式
 
 1. 导向认证服务时，所传参数如下所示

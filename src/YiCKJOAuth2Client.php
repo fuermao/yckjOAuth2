@@ -572,7 +572,9 @@ class YiCKJOAuth2Client
             try {
                 return $this->cacheManager
                     ->tag(self::cache_refresh_token_tag)
-                    ->remember($refreshTokenKey, $accessToken->getRefreshToken(),0);
+                    // TODO：提供OAuth refresh Token 过期时间配置
+                    // 比accessToken的过期时间长 1800 秒
+                    ->remember($refreshTokenKey, $accessToken->getRefreshToken(),$accessToken->getExpires() - time() + 1800);
             } catch (\throwable $e) {
                 $logData["Error"] = "存储RefreshToken失败！".$e->getMessage();
                 Logger::getInstance(self::$logFileName)->write($logData);
@@ -688,7 +690,7 @@ class YiCKJOAuth2Client
             if(time() > $accessTokenObj->getExpires()){
                 $logData["Error"] = "accessToken[".$accessTokenStr."]已过期！重新获取access token(refresh_token)！";
                 Logger::getInstance(self::$logFileName)->write($logData);
-                throw new OAuthClientException($logData["Error"],500);
+                throw new OAuthClientException($logData["Error"],400);
             }
             return $accessTokenObj;
         } catch (InvalidArgumentException $e) {
