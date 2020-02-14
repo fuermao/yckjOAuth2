@@ -273,7 +273,7 @@ class YiCKJOAuth2Client
             // 设置请求头以及request body中必须的请求参数
             $this->provider->setOptionProvider($providerOptions);
             // 拼装请求参数数组
-            $requestData["code"] = $_GET["code"];
+            $requestData["code"] = $authCode;
             $requestData["scope"] = $this->oauthConfig["scopes"];
 
             // 日志参数

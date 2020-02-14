@@ -60,6 +60,14 @@ use OAuth2\YiCKJOAuth2Client;
 $oauthClient = YiCKJOAuth2Client::getInstance($oauthConfig);
 
 try {
-    $token = $oauthClient->authorizationCode();
+    // 跳转获取授权码
+    $oauthClient->authorizationCode();
 } catch (OAuthClientException $e) {
+    $returnData["s_code"] = $e->getCode();
+    $returnData["s_msg"] = $e->getMessage();
+    $returnData["s_ts"] = time();
+    $returnData["s_data"] = null;
+    echo json_encode($returnData);
+    ob_flush();
+    die;
 }

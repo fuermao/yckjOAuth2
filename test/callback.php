@@ -57,18 +57,44 @@ use OAuth2\YiCKJOAuth2Client;
 //        Logger::getInstance("access_token")->write($logData);
 //    }
 //}
+header("content-type:application/json;charset=utf-8");
 $oauthClient = YiCKJOAuth2Client::getInstance($oauthConfig);
-
+$returnData["s_code"] = 0;
+$returnData["s_msg"] = "";
+$returnData["s_ts"] = time();
+$returnData["s_data"] = null;
 try {
     $accessToken = $oauthClient->getAccessToken();
-    echo "<pre>";
-    print_r($accessToken);
-    echo "<pre/>";
-    die;
+
+
+    if($accessToken instanceof \League\OAuth2\Client\Token\AccessToken){
+        http_response_code(200);
+        echo json_encode($accessToken);
+        ob_flush();
+        die;
+    }else{
+        http_response_code(401);
+        $returnData["s_code"] = -1;
+        $returnData["s_msg"] = "登录失败！";
+    }
 } catch (OAuthClientAuthCodeNotExistException $e) {
+    http_response_code($e->getCode());
+    $returnData["s_code"] = $e->getCode();
+    $returnData["s_msg"] = $e->getMessage();
     Logger::getInstance("test_callback")->write(["Error"=>$e->getMessage()]);
 } catch (OAuthClientException $e) {
+    http_response_code($e->getCode());
+    $returnData["s_code"] = 401;
+    $returnData["s_msg"] = $e->getMessage();
     Logger::getInstance("test_callback")->write(["Error"=>$e->getMessage()]);
 } catch (throwable $e) {
+    http_response_code(500);
+    $returnData["s_code"] = 500;
+    $returnData["s_msg"] = $e->getMessage();
     Logger::getInstance("test_callback")->write(["Error"=>$e->getMessage()]);
 }
+
+echo json_encode($returnData);
+flush();
+ob_flush();
+die;
