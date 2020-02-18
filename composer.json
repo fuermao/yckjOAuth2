@@ -3,11 +3,11 @@
     "description": "对接oauth2.0服务",
     "type": "library",
     "require": {
-        "guzzlehttp/guzzle": "^6.0",
-        "php-http/guzzle6-adapter": "^2.0",
+        "guzzlehttp/guzzle": "6.5.2",
+        "php-http/guzzle6-adapter": "2.0.1",
         "ext-json": "*",
-        "topthink/think-cache": "^2.0",
-        "league/oauth2-client": "^2.4"
+        "topthink/think-cache": "2.0.6",
+        "league/oauth2-client": "2.4.1"
     },
     "license": "MIT",
     "authors": [
