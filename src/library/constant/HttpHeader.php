@@ -66,4 +66,6 @@ class HttpHeader
     const VIA = "Via";
     const WARNING = "Warning";
     const WWW_AUTHENTICATE = "WWW-Authenticate";
+    const JAVASCRIPT_AJAX = "X-Requested-With";
+    const JQUERY_AJAX = "HTTP_X_REQUESTED_WITH";
 }

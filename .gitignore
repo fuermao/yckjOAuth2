@@ -6,3 +6,6 @@ vendor/*
 
 # composer 锁文件
 composer.lock
+
+# 日志文件
+*/runtime/*

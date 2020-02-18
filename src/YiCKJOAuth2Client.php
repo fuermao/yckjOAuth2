@@ -135,6 +135,14 @@ class YiCKJOAuth2Client
         ],
     ];
 
+    /**
+     * @var Logger 日志实例
+     */
+    private $logInstance;
+
+    /**
+     * @var string 日志文件名称
+     */
     private static $logFileName = "oauth_process";
 
     /**
@@ -211,7 +219,8 @@ class YiCKJOAuth2Client
      * 公有初始化配置
      */
     protected function initialization(): void {
-
+        // 初始化日志实例 两个条件：日志实例为空或者null 或者日志根路径与当前日志实例根路径不同，则初始化日志实例
+        $this->logInstance = Logger::getInstance(self::$logFileName);
     }
 
     /**
@@ -228,12 +237,15 @@ class YiCKJOAuth2Client
         // 记录下请求信息以及oauth配置
         $logData = array_merge($this->oauthConfig,[
             "OAuth stage"=>"请求获取授权码阶段【auth_code】",
-            "Service States Code"=>$statStr
+            // 状态码
+            "Service States Code"=>sprintf("auth_code = %s",$statStr)
         ]);
         // 记录日志信息
-        Logger::getInstance(self::$logFileName)->write($logData);
+        $this->logInstance->write($logData);
+        // 将stateStr存储与缓存中
         $this->storeStateCode($statStr);
         // 导向认证服务器
+        header(sprintf("%s:%s",HttpHeader::JAVASCRIPT_AJAX,));
         header("Location: ".$getCodeUrl);
         // 跳转后退出程序
         exit();
@@ -255,16 +267,16 @@ class YiCKJOAuth2Client
         $stateStr = array_key_exists("state",$_GET)?htmlspecialchars(trim($_GET["state"])):"";
         if(empty($authCode) || empty($stateStr)){
             $logData["Error"] = "授权码(code)或状态码(state)缺失！";
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException("授权码(code)或状态码(state)缺失！",401);
         }
-
         // 判断缓存中是否存在state字符串
         try {
             $stateExistRes = $this->getStoreStateCode($stateStr);
-            if(!$stateExistRes){
+
+            if(empty($stateExistRes)){
                 $logData["Error"] = "状态码（state【".$stateStr."】）不存在或不匹配";
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientAuthCodeNotExistException("状态码不存在或不匹配！",401);
             }
             // 拼装请求
@@ -284,7 +296,7 @@ class YiCKJOAuth2Client
             if(!($accessToken instanceof AccessToken)){
                 $logData["Error"] = "获取access_token失败！";
                 $logData["Error Data"] = (string)$accessToken;
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException("获取access_token失败！",401);
             }
             // 使用thinkphp的缓存策略
@@ -298,7 +310,7 @@ class YiCKJOAuth2Client
             }else{
                 $logData["Cache Access Token Result"] = "存储accessToken失败！";
             }
-            Logger::getInstance(static::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             return $accessToken;
         } catch (IdentityProviderException $e) {
             $exceptionMsg = "";
@@ -309,8 +321,11 @@ class YiCKJOAuth2Client
             }
             $errMsg = sprintf("获取access_token失败！%s",$exceptionMsg);
             $logData["Error"] = $errMsg;
-            Logger::getInstance(static::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($errMsg,500);
+        } catch (OAuthClientAuthCodeNotExistException $e){
+            $exceptionMsg = $e->getMessage();
+            throw new OAuthClientException($exceptionMsg,$e->getCode());
         }
     }
 
@@ -328,7 +343,7 @@ class YiCKJOAuth2Client
             $userInfo = $this->getStoreUserDetail($accessTokenStr);
             $logData["Get User Info From Cache"] = "true";
             $logData["User Info"] = $userInfo;
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             return $userInfo;
         }else{
             try {
@@ -341,25 +356,25 @@ class YiCKJOAuth2Client
                 if(!($userInfo instanceof GenericResourceOwner) || !$userInfo){
                     $errMsg = "获取用户信息失败！";
                     $logData["Error"] = $errMsg;
-                    Logger::getInstance(self::$logFileName)->write($logData);
+                    $this->logInstance->write($logData);
                     throw new OAuthClientException($errMsg,500);
                 }
                 // 将用户信息写入缓存中
                 $this->storeUserDetail($accessToken->getToken(),$userInfo);
                 // 将完整的解析
                 $logData["User Info"] = (array)$userInfo->toArray();
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 return $userInfo->toArray();
             } catch (UnexpectedValueException $exception){
                 $logData["Error"] = sprintf("获取用户信息失败，认证服响应非json格式，导致无法解析！%s",$exception->getMessage());
                 // 获取用户信息失败
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException($logData["Error"],500);
             } catch (IdentityProviderException $exception){
                 $errorBody = implode(",",array_values($exception->getResponseBody()));
                 $logData["Error"] = sprintf("获取用户信息失败！%s！",$errorBody);
                 // 获取用户信息失败
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException($logData["Error"],401);
             }
         }
@@ -379,7 +394,7 @@ class YiCKJOAuth2Client
             $refreshToken = $this->getStoreRefreshToken($accessTokenStr);
             if(empty($refreshToken) || !$refreshToken || $refreshToken == null){
                 $logData["Error"] = "access token 无法获取refresh token！请核实Oauth Client是否具有获取refresh token权限！其次联系管理员清除相关用户登录信息缓存！";
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException($logData["Error"],401);
             }
 
@@ -396,7 +411,7 @@ class YiCKJOAuth2Client
             if(!$accessToken || !($accessToken instanceof AccessToken)){
                 $logData["Error"] = sprintf("刷新access_token失败！查询获取Refresh Token日志！获取详细信息！");
                 $logData["Error Data"] = (string)$accessToken;
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException($logData["Error"],500);
             }
 
@@ -408,13 +423,13 @@ class YiCKJOAuth2Client
             $this->deleteStoreUserDetail($accessTokenStr);
 
             $logData["Request Refresh Access Token Result"] = (array)$accessToken->jsonSerialize();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             return $accessToken;
         } catch (IdentityProviderException $e) {
             $errMsg = implode(",",array_values($e->getResponseBody()));
             $errMsg = sprintf("刷新access_token失败！%s",$errMsg);
             $logData["Error"] = $errMsg;
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($errMsg,500);
         }
     }
@@ -475,11 +490,11 @@ class YiCKJOAuth2Client
                     array_push($result,false);
                 }
             }
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             return in_array(true,$result);
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = sprintf("登出失败！删除用户信息错误！%s",$e->getMessage());
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }
@@ -505,18 +520,21 @@ class YiCKJOAuth2Client
      * @throws OAuthClientException
      */
     private function storeStateCode(string $stateCode){
+        // 获取键名
         $stateCodeKey = $this->getStateCodeKey($stateCode);
         try {
+            // 并设置10分钟后过期
             return $this->cacheManager
                 ->tag(self::cache_state_tag)
-                ->remember($stateCodeKey, $stateCode, 36000);
+                // 设置过期时间
+                ->remember($stateCodeKey, $stateCode, 600);
         } catch (\throwable $e) {
             $logData["Error"] = "存储stateCode失败！".$e->getMessage();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "存储stateCode失败！".$e->getMessage();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }
@@ -533,12 +551,13 @@ class YiCKJOAuth2Client
         try {
             $stateCodeCache = $this->cacheManager
                 ->get($stateCodeKey);
-            // 并删除缓存中的stateCode
-            $this->cacheManager->delete($stateCodeCache);
+            // 并删除缓存中的stateCode，stateCode属于一次业务，所以获取后就需要删除
+            // 暂时取消该代码
+             $this->cacheManager->delete($stateCodeKey);
             return !empty($stateCodeCache)?$stateCodeCache:false;
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "获取stateCode失败！".$e->getMessage();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }
@@ -577,11 +596,11 @@ class YiCKJOAuth2Client
                     ->remember($refreshTokenKey, $accessToken->getRefreshToken(),$accessToken->getExpires() - time() + 1800);
             } catch (\throwable $e) {
                 $logData["Error"] = "存储RefreshToken失败！".$e->getMessage();
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException($logData["Error"],500);
             } catch (InvalidArgumentException $e) {
                 $logData["Error"] = "存储RefreshToken失败！".$e->getMessage();
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException($logData["Error"],500);
             }
         }else{
@@ -602,7 +621,7 @@ class YiCKJOAuth2Client
             return $this->cacheManager->get($refreshTokenKey);
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "从缓存中获取refreshToken【key=>".$accessTokenStr."】失败！".$e->getMessage();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }
@@ -619,7 +638,7 @@ class YiCKJOAuth2Client
             $this->cacheManager->delete($refreshTokenKey);
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "从缓存中删除refreshToken【key=>".$accessTokenStr."】失败！".$e->getMessage();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }
@@ -653,11 +672,11 @@ class YiCKJOAuth2Client
                 ->remember($accessTokenKey, json_encode((array)$accessToken->jsonSerialize()), (int)($accessToken->getExpires() - time()));
         } catch (\throwable $e) {
             $logData["Error"] = "存储accessToken失败！".$e->getMessage();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "存储accessToken失败！".$e->getMessage();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }
@@ -676,26 +695,26 @@ class YiCKJOAuth2Client
             $accessTokenJson = $this->cacheManager->get($key);
             if(empty($accessTokenJson) || !$accessTokenJson){
                 $logData["Error"] = "缓存中不存在accessToken[".$accessTokenStr."]";
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException($logData["Error"],401);
             }
             $accessToken = (array)json_decode($accessTokenJson,true);
             if(!$accessToken){
                 $logData["Error"] = "解析accessToken[".$accessTokenStr."]失败！存储至缓存中的token非json格式！";
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException($logData["Error"],500);
             }
             // 再判断缓存是否过期
             $accessTokenObj = new AccessToken($accessToken);
             if(time() > $accessTokenObj->getExpires()){
                 $logData["Error"] = "accessToken[".$accessTokenStr."]已过期！重新获取access token(refresh_token)！";
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException($logData["Error"],400);
             }
             return $accessTokenObj;
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "从缓存中获取accessToken【key=>".$key."】失败！".$e->getMessage();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }
@@ -712,7 +731,7 @@ class YiCKJOAuth2Client
             $this->cacheManager->delete($key);
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "从缓存中删除AccessToken【accessToken=>".$accessTokenStr."】失败！".$e->getMessage();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }
@@ -746,7 +765,7 @@ class YiCKJOAuth2Client
         $userDetailArr = (array) $userDetail->toArray();
         if(!($accessToken instanceof AccessToken) || empty($accessToken)){
             $logData["Error"] = "缓存中无该accessToken[".$accessToken."]！导致无法缓存用户信息！";
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],401);
         }
         try {
@@ -756,11 +775,11 @@ class YiCKJOAuth2Client
                 ->remember($userDetailKey,json_encode($userDetailArr),(int)($accessToken->getExpires() - time()));
         } catch (\throwable $e) {
             $logData["Error"] = "缓存accessToken[".$accessToken."]所对应的用户信息失败！";
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],401);
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "缓存accessToken[".$accessToken."]所对应的用户信息失败！";
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],401);
         }
     }
@@ -778,7 +797,7 @@ class YiCKJOAuth2Client
             return $this->cacheManager->has($userDetailKey);
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "获取缓存accessToken[".$accessTokenStr."]所对应的用户信息失败！从缓存中获取用户信息失败！请检查缓存配置！";
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }
@@ -799,12 +818,12 @@ class YiCKJOAuth2Client
                 return $userDetail;
             }else{
                 $logData["Error"] = "获取缓存accessToken[".$accessTokenStr."]所对应的用户信息失败！用户尚未登录！";
-                Logger::getInstance(self::$logFileName)->write($logData);
+                $this->logInstance->write($logData);
                 throw new OAuthClientException($logData["Error"],401);
             }
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "获取缓存accessToken[".$accessTokenStr."]所对应的用户信息失败！从缓存中获取用户信息失败！请检查缓存配置！";
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }
@@ -822,7 +841,7 @@ class YiCKJOAuth2Client
             $this->cacheManager->delete($userDetailKey);
         } catch (InvalidArgumentException $e) {
             $logData["Error"] = "从缓存中删除用户信息【access_token=>".$accessTokenStr."】失败！".$e->getMessage();
-            Logger::getInstance(self::$logFileName)->write($logData);
+            $this->logInstance->write($logData);
             throw new OAuthClientException($logData["Error"],500);
         }
     }

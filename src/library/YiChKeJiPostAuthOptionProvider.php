@@ -42,7 +42,10 @@ class YiChKeJiPostAuthOptionProvider implements OptionProviderInterface
             [
                 'content-type' => 'application/x-www-form-urlencoded',
                 HttpHeader::ACCEPT => "application/json",
-                HttpHeader::AUTHORIZATION => $this->headerAuthorization
+                HttpHeader::AUTHORIZATION => $this->headerAuthorization,
+                // 设置ajax请求头（临时方案）
+//                HttpHeader::JAVASCRIPT_AJAX => "XMLHttpRequest",
+//                HttpHeader::JQUERY_AJAX => "XMLHttpRequest"
             ]
         ];
 

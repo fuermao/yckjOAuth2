@@ -1,6 +1,7 @@
 <?php
 require_once("index.php");
 
+use League\OAuth2\Client\Token\AccessToken;
 use OAuth2\exception\OAuthClientAuthCodeNotExistException;
 use OAuth2\exception\OAuthClientException;
 use OAuth2\library\logger\Logger;
@@ -63,38 +64,35 @@ $returnData["s_code"] = 0;
 $returnData["s_msg"] = "";
 $returnData["s_ts"] = time();
 $returnData["s_data"] = null;
+$httpCode = 200;
 try {
     $accessToken = $oauthClient->getAccessToken();
-
-
-    if($accessToken instanceof \League\OAuth2\Client\Token\AccessToken){
+    if($accessToken instanceof AccessToken){
         http_response_code(200);
         echo json_encode($accessToken);
         ob_flush();
         die;
     }else{
-        http_response_code(401);
+        $httpCode = 401;
         $returnData["s_code"] = -1;
         $returnData["s_msg"] = "登录失败！";
     }
 } catch (OAuthClientAuthCodeNotExistException $e) {
-    http_response_code($e->getCode());
+    $httpCode = $e->getCode();
     $returnData["s_code"] = $e->getCode();
     $returnData["s_msg"] = $e->getMessage();
     Logger::getInstance("test_callback")->write(["Error"=>$e->getMessage()]);
 } catch (OAuthClientException $e) {
-    http_response_code($e->getCode());
+    $httpCode = $e->getCode();
     $returnData["s_code"] = 401;
     $returnData["s_msg"] = $e->getMessage();
     Logger::getInstance("test_callback")->write(["Error"=>$e->getMessage()]);
 } catch (throwable $e) {
-    http_response_code(500);
+    $httpCode = 500;
     $returnData["s_code"] = 500;
     $returnData["s_msg"] = $e->getMessage();
     Logger::getInstance("test_callback")->write(["Error"=>$e->getMessage()]);
 }
-
 echo json_encode($returnData);
-flush();
 ob_flush();
 die;
