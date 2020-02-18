@@ -245,7 +245,7 @@ class YiCKJOAuth2Client
         // 将stateStr存储与缓存中
         $this->storeStateCode($statStr);
         // 导向认证服务器
-        header(sprintf("%s:%s",HttpHeader::JAVASCRIPT_AJAX,));
+        header(sprintf("%s:%s",HttpHeader::JAVASCRIPT_AJAX,"XMLHttpRequest"));
         header("Location: ".$getCodeUrl);
         // 跳转后退出程序
         exit();
