@@ -462,7 +462,7 @@ class YiCKJOAuth2Client
             );
             // 发送远程请求通知
             if($isNotifySSOServer){
-                $header[HttpHeader::AUTHORIZATION] = sprintf("Bear %s",$accessTokenStr);
+                $header[HttpHeader::AUTHORIZATION] = sprintf("Bearer %s",$accessTokenStr);
                 $header[HttpHeader::CONTENT_TYPE] = MediaType::APPLICATION_FORM_URLENCODED_VALUE;
                 $header[HttpHeader::ACCEPT] = MediaType::APPLICATION_JSON_UTF8_VALUE;
                 $logoutUrl = $this->oauthConfig["logoutSSO"];

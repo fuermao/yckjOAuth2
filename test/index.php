@@ -18,9 +18,9 @@ $oauthConfig = [
     "host" => "http://test.yichuang.com:8090",
 //    "host" => "",
     // 在认证服务中注册本应用的clientId以及client_secret
-    "client_id" => "wjz0hTNcTHvx88aexQ9pKeezuq4ldhGe",
+    "client_id" => "sAWoxlibgN7KJkT2NYwqZUMq8eceG96f",
 //    "client_id" => null,
-    "client_secret" => "OcQGLnGe7M4zeq6CRhItvhV63c38uHpj",
+    "client_secret" => "Xwsxwcx74KJhcICrrkwf94iiSddKGSEE",
     // 申明的权限内容
     "scope" => "user_info",
     // 授权码模式回调地址
