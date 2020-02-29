@@ -59,14 +59,17 @@ use OAuth2\YiCKJOAuth2Client;
 //    }
 //}
 header("content-type:application/json;charset=utf-8");
-$oauthClient = YiCKJOAuth2Client::getInstance($oauthConfig);
+$oauthClient = YiCKJOAuth2Client::getInstance($config->get("OAuthConfig"),$config->get("CacheConfig"));
 $returnData["s_code"] = 0;
 $returnData["s_msg"] = "";
 $returnData["s_ts"] = time();
 $returnData["s_data"] = null;
 $httpCode = 200;
 try {
-    $accessToken = $oauthClient->getAccessToken();
+	
+	// 创建缓存Key值，使用sessionId创建缓存key
+	$cacheKey =  session_id();
+    $accessToken = $oauthClient->accessToken($cacheKey);
     if($accessToken instanceof AccessToken){
         http_response_code(200);
         echo json_encode($accessToken);

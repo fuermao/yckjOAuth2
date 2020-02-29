@@ -7,7 +7,11 @@
         "php-http/guzzle6-adapter": "2.0.1",
         "ext-json": "*",
         "topthink/think-cache": "2.0.6",
-        "league/oauth2-client": "2.4.1"
+        "league/oauth2-client": "2.4.1",
+        "yckj/utils": ">=0.0.1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "~6.1"
     },
     "license": "MIT",
     "authors": [
@@ -19,7 +23,8 @@
     "minimum-stability": "beta",
     "autoload": {
         "psr-4": {
-            "OAuth2\\": "src/"
+            "OAuth2\\": "src/",
+            "Test\\": "test/"
         }
     }
 }
