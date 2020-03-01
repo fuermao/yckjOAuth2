@@ -5,6 +5,8 @@ namespace OAuth2\library\logger;
 
 
 use OAuth2\library\constant\LogType;
+use Prophecy\Exception\Doubler\MethodNotFoundException;
+use think\exception\ClassNotFoundException;
 
 final class Logger
 {
@@ -138,122 +140,110 @@ final class Logger
         $logStr.= "============================ Log End ============================".PHP_EOL.PHP_EOL;
         $this->writeFile($logStr);
     }
-    
+	
+	/**
+	 * 写字符串至日志文件
+	 * @param string $logStr
+	 *
+	 * @return bool
+	 */
     private function writeFile(string $logStr){
 	    $resource = "";
 	    try {
 		    $resource = fopen($this->fullLogFileRealPath,"a+");
 		    fwrite($resource,$logStr);
+		    return true;
 	    }catch (\Exception $exception){
-		
+	    	return false;
 	    } finally {
 		    fclose($resource);
 	    }
     }
-	
+    
 	/**
 	 * 记录 trace 等级日志
 	 * @param $data
+	 *
+	 * @return bool
 	 */
     public function trace($data){
-    	if(is_array($data)){
-		    $this->writeFile($this->getLogFormatStr($data,LogType::TRACE));
-	    }else{
-		    $this->writeFile($this->getLogFormatStrLine(settype($data,"string"),LogType::TRACE));
-	    }
+	    return $this->writeFile($this->getLogFormatStrLine($data,LogType::TRACE));
     }
     
-    /**
+	/**
 	 * 记录 debug 等级日志
 	 * @param $data
+	 *
+	 * @return bool
 	 */
 	public function debug($data){
-		if(is_array($data)){
-			$this->writeFile($this->getLogFormatStr($data,LogType::DEBUG));
-		}else{
-			$this->writeFile($this->getLogFormatStrLine(settype($data,"string"),LogType::DEBUG));
-		}
+		return $this->writeFile($this->getLogFormatStrLine($data,LogType::DEBUG));
 	}
 	
 	/**
 	 * 记录 info 等级日志
 	 * @param $data
+	 *
+	 * @return bool
 	 */
 	public function info($data){
-		if(is_array($data)){
-			$this->writeFile($this->getLogFormatStr($data,LogType::INFO));
-		}else{
-			$this->writeFile($this->getLogFormatStrLine(settype($data,"string"),LogType::INFO));
-		}
+		return $this->writeFile($this->getLogFormatStrLine($data,LogType::INFO));
 	}
 	
 	/**
 	 * 记录 warn 等级日志
 	 * @param $data
+	 *
+	 * @return bool
 	 */
 	public function warn($data){
-		if(is_array($data)){
-			$this->writeFile($this->getLogFormatStr($data,LogType::WARN));
-		}else{
-			$this->writeFile($this->getLogFormatStrLine(settype($data,"string"),LogType::WARN));
-		}
+		return $this->writeFile($this->getLogFormatStrLine($data,LogType::WARN));
 	}
 	
 	/**
 	 * 记录 error 等级日志
 	 * @param $data
+	 *
+	 * @return bool
 	 */
 	public function error($data){
-		if(is_array($data)){
-			$this->writeFile($this->getLogFormatStr($data,LogType::TRACE));
-		}else{
-			$this->writeFile($this->getLogFormatStrLine(settype($data,"string"),LogType::ERROR));
-		}
+		return $this->writeFile($this->getLogFormatStrLine($data,LogType::ERROR));
 	}
 	
 	/**
 	 * 记录 fatal 等级日志
 	 * @param $data
+	 *
+	 * @return bool
 	 */
 	public function fatal($data){
-		if(is_array($data)){
-			$this->writeFile($this->getLogFormatStr($data,LogType::FATAL));
-		}else{
-			$this->writeFile($this->getLogFormatStrLine(settype($data,"string"),LogType::FATAL));
-		}
+		return $this->writeFile($this->getLogFormatStrLine($data,LogType::FATAL));
 	}
 	
 	/**
-	 * 返回日志格式字符串
+	 * 获取日志格式数据
 	 *
-	 * @param array  $data      记录的日志数据
-	 * @param string $logLev    日志等级
-	 *
-	 * @return string
-	 */
-    private function getLogFormatStr(array $data, $logLev){
-    	$logStr = "";
-	    foreach ($data as $key=>$datum) {
-	    	if(is_array($datum)){
-			    $logStr .= $this->getLogFormatStrLine(json_encode($datum,JSON_UNESCAPED_UNICODE),$logLev);
-		    }else if (is_bool($datum)){
-			    $logStr .= $this->getLogFormatStrLine((bool)$datum?"true":"false",$logLev);
-		    }else{
-			    $logStr .= $this->getLogFormatStrLine(settype($datum,"string"),$logLev);
-		    }
-    	}
-        return $logStr;
-    }
-	
-	/**
-	 * 获取单行数据
-	 * @param string $str
+	 * @param        $data
 	 * @param        $logLev
 	 *
 	 * @return string
 	 */
-    private function getLogFormatStrLine(string $str,$logLev):string {
-        return sprintf(date("Y-m-d H:i:s",time())."【%s】 %s".PHP_EOL,$logLev,$str);
+    private function getLogFormatStrLine($data,$logLev):string {
+    	if(is_array($data)){
+		    return sprintf(
+		    	date("Y-m-d H:i:s",time())."【%s】%s".PHP_EOL,
+			    $logLev,
+			    json_encode($data,JSON_UNESCAPED_UNICODE)
+		    );
+	    }else if(is_bool($data)){
+		    return sprintf(
+			    date("Y-m-d H:i:s",time())."【%s】%s".PHP_EOL,
+			    $logLev,
+			    $data? "true":"false"
+		    );
+	    }else{
+		    return sprintf(date("Y-m-d H:i:s",time())."【%s】%s".PHP_EOL,$logLev,$data);
+	    }
     }
 
 

@@ -199,18 +199,23 @@ class StoreFactory
 	
 	/**
 	 * 删除指定键名缓存数据
-	 *
 	 * @param string $cacheKeyName
 	 *
+	 * @throws \OAuth2\exception\CacheManagerException
 	 * @return bool
 	 */
 	public function deleteCacheData(string $cacheKeyName): bool {
 		try {
-			return $this->cacheManager->delete($cacheKeyName);
+			$res = $this->cacheManager->delete($cacheKeyName);
+			if($res){
+				return true;
+			}else{
+				throw new CacheManagerException("删除缓存数据失败！",500);
+			}
 		} catch (InvalidArgumentException $e) {
 			$errorMsg = "删除缓存数据失败！".$e->getMessage();
 			$this->logger->warn($errorMsg);
-			return false;
+			throw new CacheManagerException($errorMsg,500);
 		}
 	}
 	

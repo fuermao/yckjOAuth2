@@ -10,15 +10,15 @@ return [
 	// 4.授权码模式回调地址
 	"authorize_redirect" => "http://test-php.ermao.com/callback.php",
 	// 5.授权码获取地址
-	"authorize_uri" => "/auth/oauth/authorize",
+	"authorize_uri" => "/auth2/oauth/authorize",
 	// 6.token获取地址
-	"access_token_uri" => "/auth/oauth/token",
+	"access_token_uri" => "/auth2/oauth/token",
 	// 7.获取用户信息
-	"user_info_uri"     => "/auth/user/me",
+	"user_info_uri"     => "/auth2/user/me",
 	// 8.登出系统
-	"logout_sso"        => "/auth/logout",
+	"logout_sso"        => "/auth2/logout",
 	// 9.获取用户菜单权限
-	"menus_permission"  => "/auth/v1/permission",
+	"menus_permission"  => "/auth2/v1/permission",
     // 10.日志文件目录
     "log_path"                  => LOG_PATH,
 ];

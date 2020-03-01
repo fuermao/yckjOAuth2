@@ -1,7 +1,5 @@
 <?php
-use OAuth2\exception\OAuthClientException;
-use OAuth2\exception\PathNotExistException;
-use OAuth2\library\driver\ConfigLoader;
+
 use OAuth2\YiCKJOAuth2Client;
 
 require_once("index.php");
@@ -10,6 +8,8 @@ try {
 	$oauthClient = YiCKJOAuth2Client::getInstance(
 		(array)$config->get("OAuthConfig"),(array)$config->get("CacheConfig")
 	);
+	// 记录sessionId
+	$sessionId = session_id();
 	// 跳转获取授权码
     $oauthClient->authorizationCode();
 } catch (Exception $e) {
