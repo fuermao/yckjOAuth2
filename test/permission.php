@@ -16,6 +16,8 @@ $returnData["s_data"] = null;
 
 try {
 	$res = $oauthClient->permissions(session_id());
+	$returnData["s_msg"] = "操作成功！";
+	$returnData["s_data"] = $res;
 }catch (OAuthClientException $e){
 	Logger::getInstance("test-permission")->write(["Error"=>$e->getMessage()]);
 	$returnData["s_code"] = $e->getCode();

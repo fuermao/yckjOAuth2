@@ -438,8 +438,9 @@ class YiCKJOAuth2Client
 	    // 尝试从缓存中获取数据
 	    if($this->hasStorePermission($accessTokenCacheKey)){
 	    	$permission = $this->getStorePermission($accessTokenCacheKey);
-		    $logData["Get User Info From Cache"] = "true";
-		    $logData["User Info"] = $permission;
+		    $logData["Get User Permission From Cache"] = "true";
+		    $logData["User Permission"] = $permission;
+		    $this->logInstance->write($logData);
 	        return $this->getStorePermission($accessTokenCacheKey);
 	    }
 	    try {
@@ -457,6 +458,7 @@ class YiCKJOAuth2Client
 		    );
 		    // 尝试解析json数据
 		    $responseDataArr = json_decode($response->getBody()->getContents(),true);
+		    $logData["Request SSO Permission Result "] = $responseDataArr;
 		    if (empty($responseDataArr) || !is_array($responseDataArr) || sizeof($responseDataArr) == 0){
 		    	// 不是则抛出异常信息
 			    $errorMsg = "请求用户权限信息失败！无法解析非JSON格式权限信息！".mb_strcut($response->getBody()->getContents(),0,50)."...";
@@ -478,12 +480,16 @@ class YiCKJOAuth2Client
 		    foreach ($responseEntityArr as $key=>$item) {
 			    try {
 				    $tools = ArraysToObject::getInstance($item,$responseDataArr)->exchangeToObject();
-				    $code = $tools->invokeMethod("getCode");
+				    $code = $tools-> invokeMethod("getCode");
 				    $msg = $tools -> invokeMethod("getMsg");
 				    if($code == 200 || $code == 0){
 				        $permission = (array)$tools->invokeMethod("getData");
 					    // 缓存数据内容
 					    $this->storePermission($accessTokenCacheKey,$permission);
+					    // 生成日志信息
+					    $this->logInstance->write($logData);
+					    // 返回权限信息
+					    return $permission;
 				    }else{
 				    	$errorMsg = "获取用户权限失败！失败原因：".$msg."请联系上级管理员对账号进行授权本服务角色！";
 				    	// 记录错误日志
@@ -497,7 +503,6 @@ class YiCKJOAuth2Client
 				    }
 			    }
 		    }
-		    return $permission;
 	    } catch (ClientException $e){
 	    	$responseBody = $e->getResponse()->getBody()->getContents();
 		    $responseBodyArr = json_decode($responseBody,true);
@@ -711,9 +716,8 @@ class YiCKJOAuth2Client
 	 * @return mixed
 	 */
 	private function storePermission(string $accessTokenCacheKey,array $permission){
-		$accessTokenCacheKeyVal = $this->getStoreAccessTokenKey($accessTokenCacheKey);
 		// 获取AccessToken的有效期
-		$accessToken = $this->getStoreAccessToken($accessTokenCacheKeyVal);
+		$accessToken = $this->getStoreAccessToken($accessTokenCacheKey);
 		// 生成缓存权限信息键值
 		$permissionCacheKey = $this->getStorePermissionKey($accessTokenCacheKey);
 		// 缓存数据
@@ -739,7 +743,7 @@ class YiCKJOAuth2Client
 		$permissionCacheKey = $this->getStorePermissionKey($accessTokenCacheKey);
 		// 获取缓存数据
 		try {
-			return $this->cacheManager->getCacheData($accessTokenCacheKey);
+			return (array)$this->cacheManager->getCacheData($permissionCacheKey);
 		} catch (CacheManagerException $e) {
 			$err = "从缓存中获取permission【key=>".$permissionCacheKey."】失败！".$e->getMessage();
 			$this->logInstance->error($err);
@@ -928,7 +932,7 @@ class YiCKJOAuth2Client
         try {
             $accessTokenJson = $this->cacheManager->getCacheData($key);
             if(empty($accessTokenJson) || !$accessTokenJson){
-                $msg = "缓存中不存在accessToken[".$cacheAccessTokenKey."]";
+                $msg = "不存认证信息，请重新登录！错误原因：缓存中不存在accessToken[".$cacheAccessTokenKey."]";
                 $this->logInstance->error($msg);
                 throw new OAuthClientException($msg,401);
             }
