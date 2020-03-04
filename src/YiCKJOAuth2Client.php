@@ -5,6 +5,7 @@ namespace OAuth2;
 
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ClientException;
 use League\OAuth2\Client\Provider\Exception\IdentityProviderException;
 use League\OAuth2\Client\Provider\GenericProvider;
 use League\OAuth2\Client\Provider\GenericResourceOwner;
@@ -15,14 +16,15 @@ use OAuth2\exception\OAuthClientException;
 use OAuth2\exception\OAuthClientInitializationException;
 use OAuth2\library\constant\HttpHeader;
 use OAuth2\library\constant\MediaType;
+use OAuth2\library\entity\ResponseEntity;
+use OAuth2\library\entity\ResponseEntityGateway;
 use OAuth2\library\logger\Logger;
 use OAuth2\library\store\StoreFactory;
+use OAuth2\library\tools\ArraysToObject;
 use OAuth2\library\YiChKeJiPostAuthOptionProvider;
-use phpDocumentor\Reflection\Types\Boolean;
-use Psr\SimpleCache\InvalidArgumentException;
-use think\CacheManager;
-use think\facade\Cache;
+use ReflectionException;
 use UnexpectedValueException;
+
 
 class YiCKJOAuth2Client
 {
@@ -121,6 +123,11 @@ class YiCKJOAuth2Client
      * 缓存user detail（用户信息）标签名称
      */
     const cache_user_detail_tag = "yckj_user_detail";
+	
+	/**
+	 * 缓存用户权限信息标签
+	 */
+    const cache_user_permission_tag = "yckj_user_permission";
 
     /**
      * 缓存策略，参见 topthink/cache 组件说明或 tp6框架缓存章节
@@ -212,7 +219,7 @@ class YiCKJOAuth2Client
 	    }
 	    // 判断必传参数中是否存在空值
 	    if(in_array("",$oauthConfig,true) || in_array(null,$oauthConfig,true)){
-		    $valEmptyKey = array_search("",$oauthConfig,true)?array_search("",$oauthConfig,true):array_search(null,$config,true);
+		    $valEmptyKey = array_search("",$oauthConfig,true)?array_search("",$oauthConfig,true):array_search(null,$oauthConfig,true);
 		    $errMsg = sprintf("配置中[%s]值为空，初始化失败！",$valEmptyKey);
 		    throw new OAuthClientInitializationException($errMsg,500);
 	    }
@@ -230,7 +237,7 @@ class YiCKJOAuth2Client
 		    if(empty($key)){
 			    continue;
 		    }
-		    if(preg_match_all("/^([a-z]*)([\\,]true)$/i",$key)){
+		    if(preg_match_all("/^([a-z]*)([,]true)$/i",$key)){
 			    list($key,$res) = explode(",",$key);
 			    if((boolean)$res){
 				    $this->oauthConfig[$key] = $oauthConfig["host"].$oauthConfig[$item];
@@ -369,18 +376,17 @@ class YiCKJOAuth2Client
 	/**
 	 * 获取当前授权用户信息
 	 *
-	 * @param string $accessTokenStr 传入accessToken字符串
-	 * @param string $userCacheKey 用户信息缓存键
 	 * @param string $accessTokenCacheKey AccessToken缓存键
 	 *
 	 * @throws \OAuth2\exception\OAuthClientException
 	 * @return array
 	 */
-    public function resourceOwnerDetail(string $accessTokenStr,string $userCacheKey,string $accessTokenCacheKey):array {
+    public function resourceOwnerDetail(string $accessTokenCacheKey):array {
         $logData["OAuth stage"]="获取用户信息阶段【user_detail】";
+        $this->logInstance->info($this->hasStoreUserDetail($accessTokenCacheKey));
         // 尝试从缓存中获取
-        if($this->hasStoreUserDetail($accessTokenStr,$userCacheKey)){
-            $userInfo = $this->getStoreUserDetail($accessTokenStr,$userCacheKey);
+        if($this->hasStoreUserDetail($accessTokenCacheKey)){
+            $userInfo = $this->getStoreUserDetail($accessTokenCacheKey);
             $logData["Get User Info From Cache"] = "true";
             $logData["User Info"] = $userInfo;
             $this->logInstance->write($logData);
@@ -401,7 +407,7 @@ class YiCKJOAuth2Client
                     throw new OAuthClientException($errMsg,500);
                 }
                 // 将用户信息写入缓存中
-                $this->storeUserDetail($accessToken->getToken(),$userCacheKey,$accessTokenCacheKey,$userInfo);
+                $this->storeUserDetail($accessTokenCacheKey,$userInfo);
                 // 将完整的解析
                 $logData["User Info"] = (array)$userInfo->toArray();
                 $this->logInstance->write($logData);
@@ -417,12 +423,92 @@ class YiCKJOAuth2Client
 	
 	/**
 	 * 根据AccessToken获取用户菜单权限数据
-	 * @param string $accessTokenStr
 	 *
+	 * @param string $accessTokenCacheKey
+	 *
+	 * @throws \OAuth2\exception\OAuthClientException
 	 * @return array
 	 */
-    public function getPermissions(string $accessTokenStr):array {
-    
+    public function permissions(string $accessTokenCacheKey):array {
+	    $logData["OAuth stage"]="获取用户授权信息阶段【user_permission】";
+        // 从缓存中获取accessToken信息
+	    $accessToken = $this->getStoreAccessToken($accessTokenCacheKey);
+	    $accessTokenStr = $accessToken->getToken();
+	    
+	    // 尝试从缓存中获取数据
+	    if($this->hasStorePermission($accessTokenCacheKey)){
+	    	$permission = $this->getStorePermission($accessTokenCacheKey);
+		    $logData["Get User Info From Cache"] = "true";
+		    $logData["User Info"] = $permission;
+	        return $this->getStorePermission($accessTokenCacheKey);
+	    }
+	    try {
+		    $httpClient = new Client();
+		    $response = $httpClient->request(
+			    "GET",
+			    // 请求权限的地址
+			    $this->oauthConfig["userPermission"],
+			    // 发送的请求头信息
+			    [
+			    	"headers"   => [
+					    HttpHeader::AUTHORIZATION=>sprintf("Bearer %s",$accessTokenStr)
+				    ],
+			    ]
+		    );
+		    // 尝试解析json数据
+		    $responseDataArr = json_decode($response->getBody()->getContents(),true);
+		    if (empty($responseDataArr) || !is_array($responseDataArr) || sizeof($responseDataArr) == 0){
+		    	// 不是则抛出异常信息
+			    $errorMsg = "请求用户权限信息失败！无法解析非JSON格式权限信息！".mb_strcut($response->getBody()->getContents(),0,50)."...";
+			    // 记录日志信息
+			    $this->logInstance->error($errorMsg);
+		        throw new OAuthClientException($errorMsg,500);
+		    }
+		    // 将消息转换为实体
+		    $response = null;
+		    // 尝试解析两种信息实体
+		    $responseEntityArr = [
+		    	// 第一种为非网关返回，即直接返回数据
+		    	ResponseEntity::class,
+			    // 为网关返回信息
+			    ResponseEntityGateway::class
+		    ];
+		    $permission = [];
+		    // 解析返回数据
+		    foreach ($responseEntityArr as $key=>$item) {
+			    try {
+				    $tools = ArraysToObject::getInstance($item,$responseDataArr)->exchangeToObject();
+				    $code = $tools->invokeMethod("getCode");
+				    $msg = $tools -> invokeMethod("getMsg");
+				    if($code == 200 || $code == 0){
+				        $permission = (array)$tools->invokeMethod("getData");
+					    // 缓存数据内容
+					    $this->storePermission($accessTokenCacheKey,$permission);
+				    }else{
+				    	$errorMsg = "获取用户权限失败！失败原因：".$msg."请联系上级管理员对账号进行授权本服务角色！";
+				    	// 记录错误日志
+					    $this->logInstance->error($errorMsg);
+					    throw new OAuthClientException($errorMsg,401);
+				    }
+			    } catch (ReflectionException $e) {
+			    	if($key == sizeof($responseEntityArr) - 1){
+			    		$msg = "无法解析消息格式！".$e->getMessage();
+			    	    throw new OAuthClientException($msg,500);
+				    }
+			    }
+		    }
+		    return $permission;
+	    } catch (ClientException $e){
+	    	$responseBody = $e->getResponse()->getBody()->getContents();
+		    $responseBodyArr = json_decode($responseBody,true);
+		    if(array_key_exists("error",$responseBodyArr) && array_key_exists("error_description",$responseBodyArr)){
+		        $msg = "请求用户权限信息失败！".$responseBodyArr["error_description"];
+		    }else{
+			    $msg = "请求用户权限信息失败！".mb_strcut($responseBody,0);
+		    }
+	        $this->logInstance->error($msg);
+	        throw new OAuthClientException($msg,$e->getResponse()->getStatusCode());
+	    }
     }
 	
 	/**
@@ -443,7 +529,9 @@ class YiCKJOAuth2Client
                 $this->logInstance->error($errMsg);
                 throw new OAuthClientException($errMsg,401);
             }
-
+	        $this->logInstance->info(sprintf("从缓存中获取的refresh token:%s",$refreshToken));
+            
+            
             // 组装请求参数
             $requestData["refresh_token"] = $refreshToken;
             $requestData["scope"] = $this->oauthConfig["scopes"];
@@ -465,10 +553,11 @@ class YiCKJOAuth2Client
             $this->deleteStoreRefreshToken($accessTokenCacheKey);
             // 删除已经存储的AccessToken
             $this->deleteStoreAccessToken($accessTokenCacheKey);
+	        // 删除用户信息缓存
+	        $this->deleteStoreUserDetail($accessTokenCacheKey);
 	        // 更新缓存中的AccessToken数据
             $this->storeAccessToken($accessTokenCacheKey,$accessToken);
-            // 删除用户信息缓存
-            $this->deleteStoreUserDetail($accessTokenCacheKey);
+            
 
             $logData["Request Refresh Access Token Result"] = (array)$accessToken->jsonSerialize();
             $this->logInstance->write($logData);
@@ -484,15 +573,16 @@ class YiCKJOAuth2Client
             throw new OAuthClientException($e->getMessage(),$e->getCode());
         }
     }
-
-    /**
-     * 登出SSO系统
-     *
-     * @param string $accessTokenStr access token令牌
-     * @param bool $isNotifySSOServer 是否通知SSO服务，true为通知，false为不通知；
-     * @return bool
-     * @throws OAuthClientException
-     */
+	
+	/**
+	 * 登出SSO系统
+	 *
+	 * @param string $accessTokenCacheKey
+	 * @param bool   $isNotifySSOServer 是否通知SSO服务，true为通知，false为不通知；
+	 *
+	 * @throws \OAuth2\exception\OAuthClientException
+	 * @return bool
+	 */
     public function logout(string $accessTokenCacheKey,bool $isNotifySSOServer = false){
         try {
             $result = [];
@@ -505,6 +595,7 @@ class YiCKJOAuth2Client
             array_push(
                 $result,
                 $this->deleteStoreUserDetail($accessTokenCacheKey),
+                $this->deleteStorePermission($accessTokenCacheKey),
                 $this->deleteStoreRefreshToken($accessTokenCacheKey),
                 $this->deleteStoreAccessToken($accessTokenCacheKey)
             );
@@ -594,10 +685,107 @@ class YiCKJOAuth2Client
 	    } catch (CacheManagerException $e) {
 	    	throw new OAuthClientException($e->getMessage(),$e->getCode(),$e);
 	    }
-	
     }
-
-    // ==================================================================================== //
+	
+	// ==================================================================================== //
+	// ============================= Permission Cache相关操作 ============================== //
+	// ==================================================================================== //
+	/**
+	 * 生成缓存 Permission Key值
+	 * @param string $cacheKey
+	 *
+	 * @return string
+	 */
+	private function getStorePermissionKey(string $cacheKey):string {
+		$permissionKey = sprintf(self::cache_user_permission_tag.":%s",$cacheKey);
+		$this->logInstance->info(sprintf("生成缓存Permission键为：%s",$permissionKey));
+		return $permissionKey;
+	}
+	
+	/**
+	 * 缓存权限数据
+	 * @param string $accessTokenCacheKey
+	 * @param array  $permission
+	 *
+	 * @throws \OAuth2\exception\OAuthClientException
+	 * @return mixed
+	 */
+	private function storePermission(string $accessTokenCacheKey,array $permission){
+		$accessTokenCacheKeyVal = $this->getStoreAccessTokenKey($accessTokenCacheKey);
+		// 获取AccessToken的有效期
+		$accessToken = $this->getStoreAccessToken($accessTokenCacheKeyVal);
+		// 生成缓存权限信息键值
+		$permissionCacheKey = $this->getStorePermissionKey($accessTokenCacheKey);
+		// 缓存数据
+		try {
+			return $this->cacheManager->setCacheData($permissionCacheKey, $permission, ((int)$accessToken->getExpires() - time()));
+		} catch (CacheManagerException $e) {
+			$msg = "缓存permission【key=>".$permissionCacheKey."】失败！".$e->getMessage();
+			$this->logInstance->error($msg);
+			throw new OAuthClientException($msg,$e->getCode());
+		}
+	}
+	
+	/**
+	 * 获取权限数据
+	 *
+	 * @param string $accessTokenCacheKey
+	 *
+	 * @throws \OAuth2\exception\OAuthClientException
+	 * @return array
+	 */
+	public function getStorePermission(string $accessTokenCacheKey):array {
+		// 生成缓存权限信息键值
+		$permissionCacheKey = $this->getStorePermissionKey($accessTokenCacheKey);
+		// 获取缓存数据
+		try {
+			return $this->cacheManager->getCacheData($accessTokenCacheKey);
+		} catch (CacheManagerException $e) {
+			$err = "从缓存中获取permission【key=>".$permissionCacheKey."】失败！".$e->getMessage();
+			$this->logInstance->error($err);
+			throw new OAuthClientException($err,$e->getCode());
+		}
+	}
+	
+	/**
+	 * 删除缓存权限数据
+	 *
+	 * @param string $accessTokenCacheKey
+	 *
+	 * @throws \OAuth2\exception\OAuthClientException
+	 * @return bool
+	 */
+	public function deleteStorePermission(string $accessTokenCacheKey){
+		$permissionCacheKey = $this->getStorePermissionKey($accessTokenCacheKey);
+		try {
+			return $this->cacheManager
+				->deleteCacheData($permissionCacheKey);
+		} catch (CacheManagerException $e) {
+			$err = "从缓存中删除permission【key=>".$permissionCacheKey."】失败！".$e->getMessage();
+			$this->logInstance->error($err);
+			throw new OAuthClientException($e->getMessage(),$e->getCode());
+		}
+	}
+	
+	/**
+	 * 判断是否存在权限数据
+	 * @param string $accessTokenCacheKey
+	 *
+	 * @throws \OAuth2\exception\OAuthClientException
+	 * @return bool
+	 */
+	public function hasStorePermission(string $accessTokenCacheKey){
+		$permissionCacheKey = $this->getStorePermissionKey($accessTokenCacheKey);
+		try {
+			return $this->cacheManager->has($permissionCacheKey);
+		} catch (CacheManagerException $e) {
+			$err = "从缓存中判断是否存在permission【key=>".$permissionCacheKey."】失败！".$e->getMessage();
+			$this->logInstance->error($err);
+			throw new OAuthClientException($e->getMessage(),$e->getCode());
+		}
+	}
+	
+	// ==================================================================================== //
     // ============================ Refresh Token Cache相关操作 ============================ //
     // ==================================================================================== //
 	/**
@@ -608,7 +796,9 @@ class YiCKJOAuth2Client
 	 * @return string
 	 */
     private function getStoreRefreshTokenKey(string $cacheKey):string {
-        return sprintf(self::cache_refresh_token_tag.":%s",$cacheKey);
+	    $refreshTokenKey = sprintf(self::cache_refresh_token_tag.":%s",$cacheKey);
+	    $this->logInstance->info(sprintf("生成缓存RefreshToken键为：%s",$refreshTokenKey));
+        return $refreshTokenKey;
     }
 	
 	/**
@@ -657,20 +847,20 @@ class YiCKJOAuth2Client
 	        throw new OAuthClientException($msg,500);
         }
     }
-	
+    
 	/**
 	 * 删除 refresh token
-	 *
 	 * @param string $accessTokenCacheKey
 	 *
 	 * @throws \OAuth2\exception\OAuthClientException
+	 * @return bool
 	 */
     public function deleteStoreRefreshToken(string $accessTokenCacheKey){
         $refreshTokenKey = $this->getStoreRefreshTokenKey($accessTokenCacheKey);
         try {
-            $this->cacheManager->deleteCacheData($accessTokenCacheKey);
+            return $this->cacheManager->deleteCacheData($accessTokenCacheKey);
         } catch (CacheManagerException $e) {
-	        $errMsg = "从缓存中删除refreshToken【key=>".$accessTokenCacheKey."】失败！".$e->getMessage();
+	        $errMsg = "从缓存中删除refreshToken【key=>".$refreshTokenKey."】失败！".$e->getMessage();
 	        $this->logInstance->error($errMsg);
 	        throw new OAuthClientException($errMsg,500);
         }
@@ -685,7 +875,9 @@ class YiCKJOAuth2Client
      * @return string
      */
     private function getStoreAccessTokenKey(string $accessTokenStr):string {
-        return sprintf(self::cache_access_token_tag.":%s",$accessTokenStr);
+    	$accessTokenCacheKey =sprintf(self::cache_access_token_tag.":%s",$accessTokenStr);
+	    $this->logInstance->info(sprintf("生成缓存AccessToken键为：%s",$accessTokenCacheKey));
+        return $accessTokenCacheKey;
     }
 	
 	/**
@@ -706,7 +898,7 @@ class YiCKJOAuth2Client
 		$accessTokenRes = $this->cacheManager
 			->setCacheData(
 				$accessTokenKey,
-				$accessToken,
+				json_encode($accessToken->jsonSerialize(),JSON_UNESCAPED_UNICODE),
 				(int)$accessToken->getExpires()-time()
 			);
 	    $accessTokenRes = $accessTokenRes instanceof $accessToken? true:false;
@@ -720,9 +912,7 @@ class YiCKJOAuth2Client
 	    }else{
 		    $refreshTokenRes = true;
 	    }
-        $res = $accessTokenRes && $refreshTokenRes ? true:false;
-	    
-	    return $res;
+	    return $accessTokenRes && $refreshTokenRes ? true:false;
     }
 	
 	/**
@@ -735,7 +925,6 @@ class YiCKJOAuth2Client
 	 */
     public function getStoreAccessToken(string $cacheAccessTokenKey):AccessToken {
         $key = $this->getStoreAccessTokenKey($cacheAccessTokenKey);
-        $logData = [];
         try {
             $accessTokenJson = $this->cacheManager->getCacheData($key);
             if(empty($accessTokenJson) || !$accessTokenJson){
@@ -758,23 +947,23 @@ class YiCKJOAuth2Client
             }
             return $accessTokenObj;
         } catch (CacheManagerException $e) {
-        	$msg =  "从缓存中获取accessToken【key=>".$key."】失败！".$e->getMessage();;
+        	$msg =  "从缓存中获取accessToken【key=>".$key."】失败！".$e->getMessage();
 	        $this->logInstance->error($msg);
 	        throw new OAuthClientException($msg,500);
         }
     }
-	
+    
 	/**
 	 * 删除 accessToken from cache
-	 *
 	 * @param string $accessTokenCacheKey
 	 *
 	 * @throws \OAuth2\exception\OAuthClientException
+	 * @return bool
 	 */
     public function deleteStoreAccessToken(string $accessTokenCacheKey){
         $key = $this->getStoreAccessTokenKey($accessTokenCacheKey);
         try {
-            $this->cacheManager->deleteCacheData($key);
+            return $this->cacheManager->deleteCacheData($key);
         } catch (CacheManagerException $e) {
             $logData["Error"] = "从缓存中删除AccessToken【accessToken=>".$accessTokenCacheKey."】失败！".$e->getMessage();
             $this->logInstance->error($logData);
@@ -793,7 +982,9 @@ class YiCKJOAuth2Client
 	 * @return string
 	 */
     private function getStoreUserDetailKey(string $accessTokenCacheKey): string {
-        return sprintf(self::cache_user_detail_tag.":%s",$accessTokenCacheKey);
+    	$userDetailKey = sprintf(self::cache_user_detail_tag.":%s",$accessTokenCacheKey);
+	    $this->logInstance->info(sprintf("生成缓存用户信息的键：%s",$userDetailKey));
+        return $userDetailKey;
     }
 	
 	/**
@@ -867,9 +1058,7 @@ class YiCKJOAuth2Client
             if(is_array($userDetail) && !empty($userDetail)){
                 return $userDetail;
             }else{
-                $msg = "获取缓存accessToken[".$accessTokenCacheKey."]所对应的用户信息失败！用户尚未登录！";
-                $this->logInstance->error($msg);
-                throw new OAuthClientException($msg,401);
+                return [];
             }
         } catch (CacheManagerException $e) {
             $err = "获取缓存accessToken[".$accessTokenCacheKey."]所对应的用户信息失败！从缓存中获取用户信息失败！请检查缓存配置！";
@@ -877,18 +1066,18 @@ class YiCKJOAuth2Client
             throw new OAuthClientException($err,$e->getCode());
         }
     }
-	
+    
 	/**
 	 * 删除用户信息 from cache
-	 *
 	 * @param string $accessTokenCacheKey
 	 *
 	 * @throws \OAuth2\exception\OAuthClientException
+	 * @return bool
 	 */
     public function deleteStoreUserDetail(string $accessTokenCacheKey){
         $userDetailKey = $this->getStoreUserDetailKey($accessTokenCacheKey);
         try {
-            $this->cacheManager->deleteCacheData($userDetailKey);
+            return $this->cacheManager->deleteCacheData($userDetailKey);
         } catch (CacheManagerException $e) {
 	        $logData["Error"] = "从缓存中删除用户信息【access_token=>".$accessTokenCacheKey."】失败！".$e->getMessage();
 	        $this->logInstance->write($logData);

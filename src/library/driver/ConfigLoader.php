@@ -35,7 +35,7 @@ class ConfigLoader
 	 * @throws \OAuth2\exception\PathNotExistException
 	 * @return \OAuth2\library\driver\ConfigLoader
 	 */
-	public static function getInstance(string $configPath): \OAuth2\library\driver\ConfigLoader
+	public static function getInstance(string $configPath): ConfigLoader
 	{
 		// 校验配置路径
 		if(!is_dir($configPath) || !file_exists($configPath) || !realpath($configPath) ){
@@ -98,6 +98,7 @@ class ConfigLoader
 		if(empty($configKey) || $configKey == null){
 			return false;
 		}
+		// TODO： 后面在写赋值的问题
 	}
 	
 	/**

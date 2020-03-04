@@ -9,10 +9,10 @@ use OAuth2\YiCKJOAuth2Client;
 include_once("./index.php");
 header("content-type:application/json;charset=utf-8");
 
-$oauthClient = YiCKJOAuth2Client::getInstance($oauthConfig);
+$oauthClient = YiCKJOAuth2Client::getInstance($config->get("OAuthConfig"),$config->get("CacheConfig"));
 
 try{
-    $accessToken = $oauthClient->refreshAccessToken($_GET["access_token"]);
+    $accessToken = $oauthClient->refreshAccessToken(session_id());
 
     if($accessToken instanceof AccessToken){
         http_response_code(200);

@@ -206,12 +206,7 @@ class StoreFactory
 	 */
 	public function deleteCacheData(string $cacheKeyName): bool {
 		try {
-			$res = $this->cacheManager->delete($cacheKeyName);
-			if($res){
-				return true;
-			}else{
-				throw new CacheManagerException("删除缓存数据失败！",500);
-			}
+			return $this->cacheManager->delete($cacheKeyName);
 		} catch (InvalidArgumentException $e) {
 			$errorMsg = "删除缓存数据失败！".$e->getMessage();
 			$this->logger->warn($errorMsg);

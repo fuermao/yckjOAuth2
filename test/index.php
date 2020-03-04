@@ -3,7 +3,6 @@
 use OAuth2\exception\PathNotExistException;
 use OAuth2\library\constant\HttpHeader;
 use OAuth2\library\driver\ConfigLoader;
-use OAuth2\library\Tools;
 
 if(!defined("OAUTH_DS")){
     define("OAUTH_DS",DIRECTORY_SEPARATOR);
